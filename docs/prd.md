@@ -36,6 +36,9 @@ the same gates, wires, and live signal propagation as it happens.
 - VLSI-scale simulation: no timing analysis, no hazards, no analog — boolean only.
 - Scale-out / multi-server clustering.
 - Verilog/VHDL import/export, schematic capture standards (KiCad et al.).
+- Per-user undo/redo histories: undo is deliberately room-global and linear, so it
+  never clobbers a teammate's more recent edit (a per-user stack would need
+  op-inverse/CRDT machinery).
 
 ## 4. Functional requirements
 
@@ -64,6 +67,13 @@ the same gates, wires, and live signal propagation as it happens.
 - F10 Rename the circuit inline; change grid size for everyone.
 - F11 Presence: colored cursors with name tags glide across the canvas; member
   list shows who is in the room.
+- F27 Undo/redo (Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y, plus toolbar buttons) steps the
+  room's edit history backward/forward, up to 50 steps. History is **room-global
+  and linear** — undo reverts the most recent structural edit by anyone (since a
+  restore replaces the whole circuit) — and covers node/wire/move/duplicate/
+  delete/package/tidy/rename/grid/import edits, but not simulation actions (RUN,
+  switches, buttons). A new edit clears the redo branch; empty stacks are
+  rejected with a friendly error.
 
 ### 4.3 Simulation
 - F12 RUN toggles a server-side fixed-point boolean evaluation; signals flow to
@@ -132,10 +142,14 @@ the same gates, wires, and live signal propagation as it happens.
    and any unreadable/corrupt save file is skipped rather than crashing.
 7. All unit + e2e tests green; UI audit screenshots regenerate without console
    errors.
+8. Undo after an edit reverts it on every client (and redo re-applies it); undo
+   with no history is refused, and the toolbar buttons track availability.
 
 ## 7. Release history
 
-- **v1.1 (current)** — adds server-side circuit persistence (auto-save/restore),
+- **v1.2 (current)** — adds room-global undo/redo (Ctrl+Z / Ctrl+Shift+Z) on top
+  of v1.1.
+- **v1.1** — adds server-side circuit persistence (auto-save/restore),
   a 7-segment hex display, a D flip-flop, and truth-table tooling on top of v1.0.
 - **v1.0** — identity, lobby, collaborative editing, live simulation,
   custom ICs, export/import, presence, snapshot-based reconnect (see `README.md`).
@@ -148,7 +162,8 @@ Candidates (owners/decisions tracked in `tasks.md`):
 - Sequential ICs: allow CLK/Button/latches inside packaged blocks with defined
   tick semantics.
 - Simulation tooling: per-wire probe readout, step mode.
-- Undo/redo per client (needs server-side op history or CRDT-style inverse ops).
+- Undo/redo is room-global and linear (see F27); per-user histories remain a
+  non-goal.
 - Rooms as shareable read-only links (spectator role).
 - Multi-server scale-out via SignalR backplane + shared store.
 - Gate count per type in the palette, recently-used parts pinning.

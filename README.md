@@ -28,6 +28,10 @@ Built with **ASP.NET Core 9 + SignalR** on the backend and **JointJS**
   gates, orthogonal auto-routed wires with snapping, pan/zoom, selection,
   delete; click-or-drag placement, keyboard shortcuts (`0`–`9`, `B`, `D`, `F`),
   grid-snapped drops.
+- **Undo / redo** — **Ctrl+Z** / **Ctrl+Shift+Z** (or **Ctrl+Y**, or the toolbar
+  buttons) step the room's shared edit history up to 50 edits deep. It's
+  room-global and linear so it never clobbers a teammate's later work; structural
+  edits are undone, simulation actions (RUN, switches, buttons) are not.
 - **Reusable custom ICs** — select a group of combinational gates, choose
   **Package IC**, label its boundary pins, and place the saved block from the
   custom IC palette.
@@ -87,9 +91,10 @@ Browser ──┘                          lobby:{all} + room:{id} SignalR group
   (`JoinLobby`, `CreateRoom`, `FetchRooms`) and room ops (`EnterRoom`,
   `AddNode`, `MoveNode`, `DeleteNodes`, `AddWire`, `RemoveWire`,
   `ToggleInput`, `SetRunning`, `ComputeTruthTable`, `SetGridSize`, `RenameRoom`,
-  `SendCursor`).
-- `LogicDeck.Web/Core/` — `CircuitStore` (ephemeral rooms + idle sweeper),
-  `CircuitPersistence` (versioned JSON files), `LobbyService` (name suffixes +
+  `Undo`, `Redo`, `SendCursor`).
+- `LogicDeck.Web/Core/` — `CircuitStore` (in-memory rooms + idle sweeper),
+  `CircuitHistory` (bounded undo/redo snapshots), `CircuitPersistence` (versioned
+  JSON files), `LobbyService` (name suffixes +
   palette colors + reconnect grace), `Simulator` (fixed-point boolean evaluation
   with oscillation detection).
 - `LogicDeck.Web/*.cs` — `Sweeper`, `ClockTicker` and `PersistenceService`

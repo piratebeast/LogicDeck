@@ -64,6 +64,7 @@ public sealed class CollabHub : Hub<ICollabClient>
         lock (circuit.Lock)
         {
             var imported = BuildImportedCircuit(data);
+            Record(circuit);
             circuit.Title = imported.Title;
             circuit.GridSize = imported.GridSize;
             circuit.Nodes.Clear();
@@ -77,6 +78,7 @@ public sealed class CollabHub : Hub<ICollabClient>
             if (circuit.Running) snapshot = snapshot with { Signals = circuit.Evaluate() };
         }
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).CircuitReplaced(snapshot);
+        await BroadcastHistoryAsync(circuit);
         await Clients.Group(HubGroups.Lobby).RoomsChanged(_store.Summaries());
         return snapshot;
     }
@@ -88,6 +90,7 @@ public sealed class CollabHub : Hub<ICollabClient>
         CircuitSnapshot snapshot;
         MemberInfo member;
         bool newlyJoined;
+        bool canUndo, canRedo;
         SignalFrame? frame = null;
         lock (circuit.Lock)
         {
@@ -103,12 +106,15 @@ public sealed class CollabHub : Hub<ICollabClient>
             else newlyJoined = false;
             circuit.Touch();
             snapshot = SnapshotOf(circuit);
+            canUndo = circuit.History.CanUndo;
+            canRedo = circuit.History.CanRedo;
             if (circuit.Running) frame = circuit.Evaluate();
         }
         snapshot = snapshot with { Signals = frame };
 
         Context.Items[HubGroups.RoomKey] = circuit.Id;
         await Groups.AddToGroupAsync(Context.ConnectionId, HubGroups.Room(circuit.Id));
+        await Clients.Caller.HistoryChanged(canUndo, canRedo);
         if (newlyJoined)
         {
             await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).MemberJoined(member);
@@ -129,10 +135,15 @@ public sealed class CollabHub : Hub<ICollabClient>
         title = GateSpec.CleanText(title, GateSpec.MaxTitleLength, "Untitled circuit");
         lock (circuit.Lock)
         {
-            circuit.Title = title;
-            circuit.Touch();
+            if (circuit.Title != title)
+            {
+                Record(circuit);
+                circuit.Title = title;
+                circuit.Touch();
+            }
         }
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).TitleChanged(title);
+        await BroadcastHistoryAsync(circuit);
         await Clients.Group(HubGroups.Lobby).RoomsChanged(_store.Summaries());
         return RoomSummaryOf(circuit);
     }
@@ -143,10 +154,15 @@ public sealed class CollabHub : Hub<ICollabClient>
         if (!GateSpec.IsValidGridSize(gridSize)) gridSize = GateSpec.DefaultGridSize;
         lock (circuit.Lock)
         {
-            circuit.GridSize = gridSize;
-            circuit.Touch();
+            if (circuit.GridSize != gridSize)
+            {
+                Record(circuit);
+                circuit.GridSize = gridSize;
+                circuit.Touch();
+            }
         }
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).GridSizeChanged(gridSize);
+        await BroadcastHistoryAsync(circuit);
         await Clients.Group(HubGroups.Lobby).RoomsChanged(_store.Summaries());
     }
 
@@ -174,11 +190,13 @@ public sealed class CollabHub : Hub<ICollabClient>
                 throw new HubException($"A circuit can hold at most {GateSpec.MaxNodesPerCircuit} components.");
             var node = new NodeItem { Id = IdGen.New(), Type = type, X = x, Y = y, DefinitionId = definitionId };
             circuit.Snap(node);
+            Record(circuit);
             circuit.Nodes[node.Id] = node;
             circuit.Touch();
             dto = NodeDtoOf(node);
         }
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).NodeAdded(dto, sid);
+        await BroadcastHistoryAsync(circuit);
         await BroadcastSignalsIfRunningAsync(circuit);
         return dto;
     }
@@ -199,6 +217,7 @@ public sealed class CollabHub : Hub<ICollabClient>
             if (circuit.Nodes.Count + sources.Count > GateSpec.MaxNodesPerCircuit)
                 throw new HubException($"A circuit can hold at most {GateSpec.MaxNodesPerCircuit} components.");
 
+            Record(circuit);
             var offset = circuit.GridSize * 2;
             var copies = new Dictionary<string, NodeItem>();
             foreach (var source in sources)
@@ -236,6 +255,7 @@ public sealed class CollabHub : Hub<ICollabClient>
         var others = Clients.OthersInGroup(HubGroups.Room(circuit.Id));
         foreach (var node in nodes) await others.NodeAdded(node, sid);
         foreach (var wire in wires) await others.WireAdded(wire, sid);
+        await BroadcastHistoryAsync(circuit);
         await BroadcastSignalsIfRunningAsync(circuit);
         return new DuplicationDto(nodes, wires);
     }
@@ -322,6 +342,7 @@ public sealed class CollabHub : Hub<ICollabClient>
             if (definition.Outputs.Count == 0)
                 throw new HubException("The selected circuit needs at least one output pin.");
 
+            Record(circuit);
             var minX = selected.Min(n => n.X);
             var minY = selected.Min(n => n.Y);
             var icNode = new NodeItem
@@ -364,6 +385,7 @@ public sealed class CollabHub : Hub<ICollabClient>
 
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).IcPackaged(
             result.Definition, result.Node, result.RemovedNodeIds, result.RemovedWireIds, result.AddedWires, sid);
+        await BroadcastHistoryAsync(circuit);
         await BroadcastSignalsIfRunningAsync(circuit);
         return result;
     }
@@ -384,6 +406,7 @@ public sealed class CollabHub : Hub<ICollabClient>
             if (selected.Count == 0) selected = circuit.Nodes.Values.ToList();
             if (selected.Count < 2) return new TidyLayoutDto(selected.Select(NodeDtoOf).ToList());
 
+            Record(circuit);
             var selectedIds = selected.Select(n => n.Id).ToHashSet();
             var levels = selected.ToDictionary(n => n.Id, _ => 0);
             for (var pass = 0; pass < selected.Count; pass++)
@@ -411,6 +434,7 @@ public sealed class CollabHub : Hub<ICollabClient>
         }
         foreach (var node in moved)
             await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).NodeMoved(node.Id, node.X, node.Y, sid);
+        await BroadcastHistoryAsync(circuit);
         return new TidyLayoutDto(moved);
     }
 
@@ -430,18 +454,56 @@ public sealed class CollabHub : Hub<ICollabClient>
         }
     }
 
+    public async Task<CircuitSnapshot> Undo()
+    {
+        var (_, circuit) = RequireMembership();
+        CircuitSnapshot snapshot;
+        lock (circuit.Lock)
+        {
+            var previous = circuit.History.Undo(circuit.Capture())
+                ?? throw new HubException("There is nothing left to undo.");
+            circuit.Restore(previous);
+            snapshot = SnapshotOf(circuit);
+            if (circuit.Running) snapshot = snapshot with { Signals = circuit.Evaluate() };
+        }
+        await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).CircuitReplaced(snapshot);
+        await BroadcastHistoryAsync(circuit);
+        await Clients.Group(HubGroups.Lobby).RoomsChanged(_store.Summaries());
+        return snapshot;
+    }
+
+    public async Task<CircuitSnapshot> Redo()
+    {
+        var (_, circuit) = RequireMembership();
+        CircuitSnapshot snapshot;
+        lock (circuit.Lock)
+        {
+            var next = circuit.History.Redo(circuit.Capture())
+                ?? throw new HubException("There is nothing left to redo.");
+            circuit.Restore(next);
+            snapshot = SnapshotOf(circuit);
+            if (circuit.Running) snapshot = snapshot with { Signals = circuit.Evaluate() };
+        }
+        await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).CircuitReplaced(snapshot);
+        await BroadcastHistoryAsync(circuit);
+        await Clients.Group(HubGroups.Lobby).RoomsChanged(_store.Summaries());
+        return snapshot;
+    }
+
     public async Task MoveNode(string nodeId, double x, double y)
     {
         var (sid, circuit) = RequireMembership();
         lock (circuit.Lock)
         {
             var node = FindNode(circuit, nodeId);
+            Record(circuit);
             node.X = x; node.Y = y;
             circuit.Snap(node);
             circuit.Touch();
             (x, y) = (node.X, node.Y);
         }
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).NodeMoved(nodeId, x, y, sid);
+        await BroadcastHistoryAsync(circuit);
     }
 
     public async Task DeleteNodes(IReadOnlyList<string> nodeIds)
@@ -451,11 +513,14 @@ public sealed class CollabHub : Hub<ICollabClient>
         List<string> wiresRemoved;
         lock (circuit.Lock)
         {
-            (nodesRemoved, wiresRemoved) = circuit.RemoveNodesAndAttachedWires(nodeIds.Where(IdGen.IsValid).ToList());
+            var valid = nodeIds.Where(IdGen.IsValid).ToList();
+            if (valid.Any(circuit.Nodes.ContainsKey)) Record(circuit);
+            (nodesRemoved, wiresRemoved) = circuit.RemoveNodesAndAttachedWires(valid);
             circuit.Touch();
         }
         if (nodesRemoved.Count == 0 && wiresRemoved.Count == 0) return;
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).NodesDeleted(nodesRemoved, wiresRemoved, sid);
+        await BroadcastHistoryAsync(circuit);
     }
 
     public Task<WireDto> AddWire(string fromNodeId, string toNodeId, int toPin) => AddWireCore(fromNodeId, toNodeId, toPin, 0);
@@ -474,12 +539,14 @@ public sealed class CollabHub : Hub<ICollabClient>
             var fromPort = from.Type is GateType.Ic or GateType.FlopD ? $"out{fromPin}" : "out";
             ValidateWireTarget(circuit, from, to, toPin, fromPort);
 
+            Record(circuit);
             var wire = new Wire { Id = IdGen.New(), FromNodeId = fromNodeId, ToNodeId = toNodeId, ToPin = toPin, FromPort = fromPort };
             circuit.Wires[wire.Id] = wire;
             circuit.Touch();
             dto = WireDtoOf(wire);
         }
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).WireAdded(dto, sid);
+        await BroadcastHistoryAsync(circuit);
         await BroadcastSignalsIfRunningAsync(circuit);
         return dto;
     }
@@ -518,11 +585,16 @@ public sealed class CollabHub : Hub<ICollabClient>
         bool removed = false;
         lock (circuit.Lock)
         {
-            removed = circuit.Wires.Remove(wireId);
-            if (removed) circuit.Touch();
+            if (circuit.Wires.ContainsKey(wireId))
+            {
+                Record(circuit);
+                removed = circuit.Wires.Remove(wireId);
+                if (removed) circuit.Touch();
+            }
         }
         if (!removed) return;
         await Clients.OthersInGroup(HubGroups.Room(circuit.Id)).WireRemoved(wireId, sid);
+        await BroadcastHistoryAsync(circuit);
         await BroadcastSignalsIfRunningAsync(circuit);
     }
 
@@ -627,6 +699,21 @@ public sealed class CollabHub : Hub<ICollabClient>
         lock (circuit.Lock) frame = circuit.Running ? circuit.Evaluate() : null;
         if (frame != null)
             await Clients.Group(HubGroups.Room(circuit.Id)).Signals(frame);
+    }
+
+    // Call under lock(circuit.Lock) immediately before a history-worthy mutation,
+    // so the pre-edit state can be restored by Undo.
+    private static void Record(Circuit circuit) => circuit.History.Record(circuit.Capture());
+
+    private async Task BroadcastHistoryAsync(Circuit circuit)
+    {
+        bool canUndo, canRedo;
+        lock (circuit.Lock)
+        {
+            canUndo = circuit.History.CanUndo;
+            canRedo = circuit.History.CanRedo;
+        }
+        await Clients.Group(HubGroups.Room(circuit.Id)).HistoryChanged(canUndo, canRedo);
     }
 
     private Circuit RequireCircuit(string roomId)
@@ -765,16 +852,10 @@ public sealed class CollabHub : Hub<ICollabClient>
     private static string CleanIcLabel(IReadOnlyDictionary<string, string> labels, string key, string fallback) =>
         GateSpec.CleanText(labels.TryGetValue(key, out var value) ? value : null, GateSpec.MaxNameLength, fallback);
 
-    private static IcDefinitionDto IcDefinitionDtoOf(IcDefinition definition) => new(
-        definition.Id,
-        definition.Name,
-        definition.Inputs.Select(p => new IcPinDto(p.Id, p.Label)).ToList(),
-        definition.Outputs.Select(p => new IcPinDto(p.Id, p.Label)).ToList(),
-        definition.Nodes.Select(n => new IcNodeDto(n.Id, n.Type, n.State)).ToList(),
-        definition.Wires.Select(WireDtoOf).ToList());
+    private static IcDefinitionDto IcDefinitionDtoOf(IcDefinition definition) => CircuitMapping.ToIcDto(definition);
 
-    private static NodeDto NodeDtoOf(NodeItem n) => new(n.Id, n.Type, n.X, n.Y, n.State, n.DefinitionId);
-    private static WireDto WireDtoOf(Wire w) => new(w.Id, w.FromNodeId, w.ToNodeId, w.ToPin, w.FromPort);
+    private static NodeDto NodeDtoOf(NodeItem n) => CircuitMapping.ToNodeDto(n);
+    private static WireDto WireDtoOf(Wire w) => CircuitMapping.ToWireDto(w);
     private static RoomSummary RoomSummaryOf(Circuit c) { lock (c.Lock) return CircuitStore.ToSummary(c); }
     private static CircuitSnapshot SnapshotOf(Circuit c) => new(
         c.Id,

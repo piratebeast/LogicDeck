@@ -52,12 +52,13 @@ toast marks. This gives the instrument-panel feel without extra chrome.
 
 Four regions:
 
-1. **Topbar** — back button, brand, inline title edit (Enter commits, Escape
-   reverts), RUN/STOP toggle, grid select, tool buttons (Duplicate, Package IC,
-   Truth table, Tidy, Clear, Export, Import), invite link copy, member avatar
-   stack, connection chip. Below 720 px labels collapse to icons; below 560 px
-   some buttons (Package IC, Truth table, Tidy/Clear/Export/Import, member stack)
-   hide entirely — the editor stays usable on phones.
+1. **Topbar** — back button, brand,    inline title edit (Enter commits, Escape
+   reverts), RUN/STOP toggle, grid select, tool buttons (Undo, Redo, Duplicate,
+   Package IC, Truth table, Tidy, Clear, Export, Import), invite link copy, member
+   avatar stack, connection chip. Below 720 px labels collapse to icons; below
+   560 px some buttons (Package IC, Truth table, Tidy/Clear/Export/Import, member
+   stack) hide entirely — the editor stays usable on phones. Undo/Redo are
+   icon-only and greyed out when their stack is empty (`HistoryChanged`).
 2. **Palette** (left rail) — grouped `IO` / `GATES` / `CUSTOM ICs` buttons with
    wire-glyph SVG icons and hotkey badges (`1`, `3`, `b`, …). Clicking arms the
    tool (click again disarms). ICs appear here dynamically once packaged.
@@ -106,6 +107,9 @@ Parts are drawn as real SVG in `shapes.js`, not images:
   zoom clamped 30–260 %; fit button frames the content.
 - **Direct manipulation** — clicking an Input toggles it (requires RUN), holding
   a Button presses it (releases on pointerup/blur), clicking a wire selects it.
+- **Undo/redo** — Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y) or the toolbar buttons step
+  the room's shared, linear edit history (see `docs/architecture.md` §5.4). The
+  buttons enable/disable from `HistoryChanged`; simulation actions aren't undone.
 
 ### 3.2 Live-signal visualization
 

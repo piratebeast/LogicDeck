@@ -17,6 +17,7 @@ public interface ICollabClient
         IReadOnlyList<WireDto> addedWires,
         string bySessionId);
     Task CircuitReplaced(CircuitSnapshot snapshot);
+    Task HistoryChanged(bool canUndo, bool canRedo);
     Task WireAdded(WireDto wire, string bySessionId);
     Task WireRemoved(string wireId, string bySessionId);
     Task TitleChanged(string title);

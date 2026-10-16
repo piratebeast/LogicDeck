@@ -69,7 +69,7 @@ Pure functions of nodes/wires — the highest-value red zone.
 once per test and connects real `HubConnection`s (WebSockets + SSE +
 LongPolling). Waits are `TaskCompletionSource` + `WaitAsync` (5–10 s) — no sleeps.
 
-Coverage (14 tests):
+Coverage (17 tests):
 
 | Test | What it proves |
 |---|---|
@@ -87,6 +87,9 @@ Coverage (14 tests):
 | `Truth_table_requires_at_least_one_input_switch` | empty bench rejects `ComputeTruthTable` with an "input switch" `HubException` |
 | `Importing_a_circuit_file_replaces_the_room_snapshot` | import replaces title, grid (8), 2 nodes, 1 wire |
 | `Tidy_layout_arranges_connected_nodes_into_columns` | x order follows the graph (input < gate < output) |
+| `Undo_and_redo_revert_the_last_edit_for_every_client` | after `AddNode`, the other client gets `HistoryChanged(true,false)`; `Undo` removes the node and pushes `CircuitReplaced` to the other client; `Redo` brings it back |
+| `Undo_restores_a_deleted_component` | `AddNode` then `DeleteNodes`, then `Undo` restores the node |
+| `Undo_without_history_is_rejected` | `Undo` on a fresh room throws an "undo" `HubException` |
 
 ### 3.4 `CircuitPersistenceTests` (durable circuits)
 
@@ -109,6 +112,16 @@ SignalR client, stops the app (final flush), then **boots a second app** over th
 same directory and asserts the room, its nodes/wires and the switch position are
 back. It manages its own app lifecycle (not the shared fixture).
 
+### 3.5 `CircuitHistoryTests` (undo/redo stack)
+
+Pure unit tests over `CircuitHistory` and `Circuit.Capture()`/`Restore()`:
+
+- record → undo → redo walks the stack correctly (`CanUndo`/`CanRedo` flags);
+- recording a fresh edit clears the redo branch;
+- the stack is bounded to `DefaultDepth` (oldest states dropped);
+- `Undo`/`Redo` on an empty stack return `null`;
+- `Circuit.Capture()`/`Restore()` round-trips nodes, wires, ICs, title and grid.
+
 ## 4. What is NOT covered (yet)
 
 - **UI layer** — `editor.js`/`lobby.js` have no automated tests; the substitute
@@ -116,8 +129,9 @@ back. It manages its own app lifecycle (not the shared fixture).
   verified by arming hotkey `d`, placing parts, drawing wires with real mouse
   drags, toggling inputs and asserting the decoded digit/segments; the truth
   table was verified by wiring two switches to an AND/lamp and asserting the
-  rendered dialog rows. Repeat that pattern for other canvas features until a
-  proper harness exists.
+  rendered dialog rows; undo/redo was verified by placing a gate, then dispatching
+  Ctrl+Z (gate gone, undo disabled, redo enabled) and Ctrl+Shift+Z (gate back).
+  Repeat that pattern for other canvas features until a proper harness exists.
 - **Background sweeps** (`Sweeper`, disconnect grace end-to-end) — covered only
   as unit tests of the underlying methods, not via the hosted services.
 - **`CollabHub` details not asserted by E2E**: import rejection paths, IC

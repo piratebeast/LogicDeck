@@ -45,6 +45,10 @@ These are the invariants of the codebase. Breaking them breaks the product.
 - Every state-changing op calls `circuit.Touch()`.
 - Anything that can change logic must end with
   `BroadcastSignalsIfRunningAsync(circuit)` (or equivalent `Signals` broadcast).
+- Structural edits record history (`Record(circuit)`) **before** mutating, under
+  the same lock; simulation actions (RUN, switch toggles, buttons) must **not**
+  record. Undo/redo restore a whole snapshot: send the restored snapshot to the
+  actor, `CircuitReplaced` to `OthersInGroup`, and `HistoryChanged` to the group.
 - New gates/capacities/constants go in `GateSpec` — never inline magic numbers
   in the hub.
 

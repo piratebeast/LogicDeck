@@ -520,4 +520,63 @@ public class EndToEndTests : IAsyncLifetime
         Assert.True(positions[input.Id] < positions[gate.Id]);
         Assert.True(positions[gate.Id] < positions[output.Id]);
     }
+
+    [Fact]
+    public async Task Undo_and_redo_revert_the_last_edit_for_every_client()
+    {
+        var a = await StartServerAndConnect(2);
+        var b = _conns[0];
+        await a.InvokeAsync<SessionInfo>("JoinLobby", "undo-aaaa", "Ula");
+        await b.InvokeAsync<SessionInfo>("JoinLobby", "undo-bbbb", "Umar");
+        var room = await a.InvokeAsync<RoomSummary>("CreateRoom", "Undo bench", 16);
+        await a.InvokeAsync<CircuitSnapshot>("EnterRoom", room.Id);
+        await b.InvokeAsync<CircuitSnapshot>("EnterRoom", room.Id);
+
+        var historyOnB = new TaskCompletionSource<(bool CanUndo, bool CanRedo)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        b.On<bool, bool>("HistoryChanged", (canUndo, canRedo) => historyOnB.TrySetResult((canUndo, canRedo)));
+        var replacedOnB = new TaskCompletionSource<CircuitSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        b.On<CircuitSnapshot>("CircuitReplaced", s => replacedOnB.TrySetResult(s));
+
+        var node = await a.InvokeAsync<NodeDto>("AddNode", GateType.And, 100, 80);
+        var (canUndo, canRedo) = await historyOnB.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(canUndo);
+        Assert.False(canRedo);
+
+        var undone = await a.InvokeAsync<CircuitSnapshot>("Undo");
+        Assert.DoesNotContain(undone.Nodes, n => n.Id == node.Id);
+
+        var seenByB = await replacedOnB.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.DoesNotContain(seenByB.Nodes, n => n.Id == node.Id);
+
+        var redone = await a.InvokeAsync<CircuitSnapshot>("Redo");
+        Assert.Contains(redone.Nodes, n => n.Id == node.Id);
+    }
+
+    [Fact]
+    public async Task Undo_restores_a_deleted_component()
+    {
+        var a = await StartServerAndConnect(1);
+        await a.InvokeAsync<SessionInfo>("JoinLobby", "undel-aaa", "Una");
+        var room = await a.InvokeAsync<RoomSummary>("CreateRoom", "Undo delete", 16);
+        await a.InvokeAsync<CircuitSnapshot>("EnterRoom", room.Id);
+
+        var node = await a.InvokeAsync<NodeDto>("AddNode", GateType.Xor, 0, 0);
+        await a.InvokeAsync("DeleteNodes", new[] { node.Id });
+
+        var restored = await a.InvokeAsync<CircuitSnapshot>("Undo");
+
+        Assert.Contains(restored.Nodes, n => n.Id == node.Id);
+    }
+
+    [Fact]
+    public async Task Undo_without_history_is_rejected()
+    {
+        var a = await StartServerAndConnect(1);
+        await a.InvokeAsync<SessionInfo>("JoinLobby", "undnon-aaa", "Uri");
+        var room = await a.InvokeAsync<RoomSummary>("CreateRoom", "No history", 16);
+        await a.InvokeAsync<CircuitSnapshot>("EnterRoom", room.Id);
+
+        var error = await Assert.ThrowsAnyAsync<HubException>(() => a.InvokeAsync<CircuitSnapshot>("Undo"));
+        Assert.Contains("undo", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

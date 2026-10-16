@@ -26,6 +26,8 @@ const ui = {
   zoomOut: $('#zoomOutBtn'),
   fitBtn: $('#fitBtn'),
   duplicateBtn: $('#duplicateBtn'),
+  undoBtn: $('#undoBtn'),
+  redoBtn: $('#redoBtn'),
   packageBtn: $('#packageBtn'),
   truthBtn: $('#truthBtn'),
   truthDlg: $('#truthDlg'),
@@ -568,6 +570,20 @@ function updateSelectionUi() {
   ui.clearBtn.disabled = !board || board.graph.getElements().length === 0;
 }
 
+function setHistoryUi(canUndo, canRedo) {
+  ui.undoBtn.disabled = !canUndo;
+  ui.redoBtn.disabled = !canRedo;
+}
+
+async function runHistory(command) {
+  try {
+    const snapshot = await hub.invoke(command);
+    applySnapshot(snapshot);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
 async function tidyLayout() {
   try {
     const ids = selectedNodes().map((node) => node.id);
@@ -696,6 +712,7 @@ function applySnapshot(s) {
   ui.gridSel.value = String(s.gridSize);
   ui.sbGrid.textContent = String(s.gridSize);
   ui.titleInput.value = s.title;
+  ui.titleInput.dataset.saved = s.title;
   setRunningUI(s.running);
   state.members = s.members ?? [];
   renderMembers();
@@ -1034,6 +1051,8 @@ function bindUiEvents() {
   ui.zoomOut.addEventListener('click', () => board.zoomOut());
   ui.fitBtn.addEventListener('click', () => board.fit());
   ui.duplicateBtn.addEventListener('click', duplicateSelection);
+  ui.undoBtn.addEventListener('click', () => runHistory('Undo'));
+  ui.redoBtn.addEventListener('click', () => runHistory('Redo'));
   ui.tidyBtn.addEventListener('click', tidyLayout);
   ui.clearBtn.addEventListener('click', clearCircuit);
   ui.exportBtn.addEventListener('click', exportCircuit);
@@ -1174,6 +1193,16 @@ function bindUiEvents() {
       duplicateSelection();
       return;
     }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      runHistory(e.shiftKey ? 'Redo' : 'Undo');
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      runHistory('Redo');
+      return;
+    }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
     const byHotkey = Object.entries(HOTKEYS).find(([, k]) => k === e.key);
     if (byHotkey) armTool(state.armed === byHotkey[0] ? null : byHotkey[0]);
@@ -1227,6 +1256,7 @@ function bindHubEvents() {
     applyIcPackage({ definition, node, removedNodeIds, removedWireIds, addedWires });
   });
   hub.on('CircuitReplaced', (snapshot) => applySnapshot(snapshot));
+  hub.on('HistoryChanged', (canUndo, canRedo) => setHistoryUi(canUndo, canRedo));
   hub.on('WireAdded', (dto) => addWireFromDto(dto));
   hub.on('WireRemoved', (id) => {
     state.applyingRemote = true;

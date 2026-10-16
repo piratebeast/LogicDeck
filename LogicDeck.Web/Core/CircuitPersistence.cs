@@ -91,18 +91,8 @@ public sealed class CircuitPersistence
         c.Nodes.Values
             .Select(n => new NodeDto(n.Id, n.Type, n.X, n.Y, n.Type == GateType.Input && n.State, n.DefinitionId))
             .ToList(),
-        c.Wires.Values.Select(ToWireDto).ToList(),
-        c.CustomIcs.Values.Select(ToIcDto).ToList());
-
-    private static WireDto ToWireDto(Wire w) => new(w.Id, w.FromNodeId, w.ToNodeId, w.ToPin, w.FromPort);
-
-    private static IcDefinitionDto ToIcDto(IcDefinition d) => new(
-        d.Id,
-        d.Name,
-        d.Inputs.Select(p => new IcPinDto(p.Id, p.Label)).ToList(),
-        d.Outputs.Select(p => new IcPinDto(p.Id, p.Label)).ToList(),
-        d.Nodes.Select(n => new IcNodeDto(n.Id, n.Type, n.State)).ToList(),
-        d.Wires.Select(ToWireDto).ToList());
+        c.Wires.Values.Select(CircuitMapping.ToWireDto).ToList(),
+        c.CustomIcs.Values.Select(CircuitMapping.ToIcDto).ToList());
 
     private static bool TryBuild(PersistedCircuit dto, out Circuit circuit)
     {

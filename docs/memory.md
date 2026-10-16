@@ -23,6 +23,7 @@ are drawn from the code as-is — verify before relying on them after big change
 | Boolean engine | `LogicDeck.Web/Core/Simulator.cs` |
 | Rooms/gc/clock flip | `LogicDeck.Web/Core/CircuitStore.cs` |
 | Circuit save/load (JSON files) | `LogicDeck.Web/Core/CircuitPersistence.cs` |
+| Undo/redo history | `LogicDeck.Web/Core/CircuitHistory.cs` |
 | Auto-save loop | `PersistenceService.cs` |
 | Names/colors/sessions | `LogicDeck.Web/Core/LobbyService.cs` |
 | GC + clock loops | `Sweeper.cs`, `ClockTicker.cs` |
@@ -78,6 +79,13 @@ are drawn from the code as-is — verify before relying on them after big change
   `--Persistence:Directory`). Only input-switch `State` is durable; RUN, member
   lists, clock/button/flop levels reset on restart. Dirty tracking is the
   `Circuit.Touched` event wired up in `CircuitStore.Track`.
+- **Undo/redo** is room-global and linear: `Circuit.History` records the pre-edit
+  `CircuitState` (title, grid, nodes, wires, ICs) under the circuit lock for every
+  structural op — but **not** simulation actions (RUN, switches, buttons). `Undo`/
+  `Redo` restore a whole snapshot and return it; others get `CircuitReplaced`
+  (reusing import's path), everyone gets `HistoryChanged(canUndo, canRedo)`.
+  Bounded to `CircuitHistory.DefaultDepth` = 50; a fresh edit clears redo. A
+  per-user undo would clobber teammates' later edits, so it's intentionally global.
 - **Late join / reconnect = full snapshot** (`EnterRoom` returns
   `CircuitSnapshot`); no delta replay exists.
 - **Names** dedupe case-insensitively with numeric suffixes; the *original*
@@ -113,7 +121,7 @@ are drawn from the code as-is — verify before relying on them after big change
 
 - `LogicDeck.Tests/UnitTest1.cs` is an empty scaffold.
 - README's hub-method list omits newer ops (DeleteRoom, Import, Duplicate,
-  PackageIc, TidyLayout, SetButton) — full list in `docs/api-reference.md`.
+  PackageIc, TidyLayout, SetButton, Undo/Redo) — full list in `docs/api-reference.md`.
 - IC definitions live in a module-level `Map` in `shapes.js` keyed by id and are
   re-registered from every snapshot; they're per-circuit data, not global.
 - Circuits now survive a server restart (`App_Data/circuits/`); only **runtime**

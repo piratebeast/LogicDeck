@@ -121,6 +121,17 @@ output lamps, or more than `Simulator.MaxTruthTableInputs` (8) input switches.
 Flops restart at Q=0 for each row (a combinational view) and all live
 Input/Flop state is restored before returning — nothing is broadcast.
 
+### `Undo() → CircuitSnapshot` / `Redo() → CircuitSnapshot`
+Step the room's edit history backward/forward and return the restored snapshot
+(others receive `CircuitReplaced`; everyone receives `HistoryChanged`). The
+history is **room-global and linear**: undo always reverts the room's most recent
+edit — whoever made it — because a restore replaces the whole circuit, so a
+per-user undo would clobber other people's later work. Bounded to ~50 steps.
+Records structural edits (add/move/delete node, add/remove wire, duplicate,
+package IC, tidy, rename, grid size, import) but **not** simulation actions
+(RUN, switch toggles, button presses). Throws `HubException` — "nothing left to
+undo"/"nothing left to redo" — when the stack is empty.
+
 ### `RenameRoom(title) → RoomSummary`
 Cleaned/truncated to 48 chars; pushes `TitleChanged` to others.
 
@@ -167,7 +178,8 @@ node.
 | `RunningChanged` | `bool` | sim on/off |
 | `TitleChanged` / `GridSizeChanged` | `string` / `int` | room metadata |
 | `IcPackaged` | `definition, node, removed…, added…, bySessionId` | someone packaged an IC |
-| `CircuitReplaced` | `CircuitSnapshot` | someone imported a file |
+| `CircuitReplaced` | `CircuitSnapshot` | someone imported a file or stepped undo/redo |
+| `HistoryChanged` | `canUndo, canRedo` | edit-history availability changed (also sent to the caller on `EnterRoom`) |
 | `Signals` | `SignalFrame` | new evaluation (after ops and on 2 Hz clock ticks); `displays` carries 7-segment masks, `flops` carries flop Q bits |
 | `CursorMoved` | `sessionId, name, color, x, y` | presence cursor |
 

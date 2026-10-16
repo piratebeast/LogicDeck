@@ -40,6 +40,8 @@ LogicDeck.sln
 │  │  ├─ Dtos.cs                      wire-format records (NodeDto, SignalFrame, CircuitSnapshot, …)
 │  │  ├─ CircuitStore.cs              room registry, snapshots, sweeps, clock ticks, dirty-flush
 │  │  ├─ CircuitPersistence.cs        versioned on-disk circuit format (read/validate/atomic write)
+│  │  ├─ CircuitHistory.cs            bounded undo/redo stack + CircuitState snapshot
+│  │  ├─ CircuitMapping.cs            shared domain ⇄ DTO conversions
 │  │  ├─ LobbyService.cs              session/name registry, palette colors, disconnect grace
 │  │  ├─ Simulator.cs                 fixed-point boolean evaluation + oscillation detection
 │  │  ├─ PresenceTracker.cs           connectionId → sessionId map
@@ -98,7 +100,9 @@ whole world**. See §8 for the consequences.
 | `GateSpec` | all tunables: `MaxNodesPerCircuit=400`, `MaxMembersPerCircuit=8`, `MaxCircuits=200`, `MaxNameLength=24`, `MaxTitleLength=48`, `GridSizes={8,16,24,32}` (default 16), `DisconnectGraceSeconds=15`, `IdleCircuitMinutes=10`; pin counts per type; `CleanText` sanitiser |
 | `NodeItem` | a placed component: id, type, x/y, `State` (driven for Input/CLK/Button), `DefinitionId` for ICs |
 | `Wire` | `FromNodeId`/`FromPort` (`out` or `outN`) → `ToNodeId`/`ToPin` (`inN` index) |
-| `Circuit` | aggregate root: `Nodes`, `Wires`, `CustomIcs`, `Members` dictionaries + `Lock` object + `LastActivityUtc`; `Touch()` stamps activity and raises a `Touched` event the store subscribes to for dirty tracking |
+| `Circuit` | aggregate root: `Nodes`, `Wires`, `CustomIcs`, `Members` dictionaries + `Lock` object + `LastActivityUtc`; `Touch()` stamps activity and raises a `Touched` event the store subscribes to for dirty tracking; `Capture()`/`Restore()` snapshot the editable content |
+| `CircuitHistory` | bounded (50) undo/redo stack of `CircuitState` snapshots, room-global and linear |
+| `CircuitState` | immutable snapshot of title, grid, nodes, wires and ICs (what an edit can change) |
 | `IcDefinition` | a packaged sub-circuit: boundary `Inputs`/`Outputs` pins with labels, internal `Nodes`/`Wires` |
 | `MemberInfo` | sessionId, display name, palette color |
 | `IdGen` | 12-char base36 ids from `RandomNumberGenerator`; validity regex `^[a-z0-9]{6,40}$` |
@@ -190,6 +194,25 @@ corrupt file can never stop the server from starting.
   snapshot-based, not delta-based.
 - A "real" leave (`LeaveRoom`, back button, `beforeunload`) detaches and
   broadcasts `MemberLeft` immediately.
+
+### 5.4 Undo / redo
+
+`Circuit.History` (a `CircuitHistory`) records the pre-edit `CircuitState` of every
+structural op — add/move/delete node, add/remove wire, duplicate, package IC,
+tidy, rename, grid size, import — just before it mutates, while still under
+`lock (circuit.Lock)`. Simulation actions (RUN, switch toggles, button presses)
+are deliberately **not** recorded, so undo never fights the live signals.
+
+Because a restore replaces the whole circuit, undo is **room-global and linear**:
+`Undo` pops the most recent pre-edit state and `Restore`s it (redo is the mirror
+image), so it can never clobber a more recent edit by someone else. The actor
+gets the new snapshot as the return value; everyone else gets `CircuitReplaced`
+(the same path import uses, so client `applySnapshot` needs no new code). The
+stack is bounded to 50 states and any fresh edit clears the redo branch.
+
+Every recorded op also broadcasts `HistoryChanged(canUndo, canRedo)` to the room
+(and `EnterRoom` sends it to the caller), which drives the toolbar buttons. The
+`CircuitSnapshot`/`SignalFrame` wire shapes are unchanged.
 
 ## 6. The Simulator (`Core/Simulator.cs`)
 

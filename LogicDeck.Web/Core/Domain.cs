@@ -138,6 +138,9 @@ public sealed class Circuit
     [JsonIgnore]
     public object Lock { get; } = new();
 
+    [JsonIgnore]
+    public CircuitHistory History { get; } = new();
+
     // Raised after any mutation so the store can auto-save changed circuits.
     // Not serialized (events are invisible to System.Text.Json).
     public event Action? Touched;
@@ -146,6 +149,46 @@ public sealed class Circuit
     {
         LastActivityUtc = DateTime.UtcNow;
         Touched?.Invoke();
+    }
+
+    /// <summary>Snapshots the editable content (title, grid, nodes, wires, ICs) for undo.</summary>
+    public CircuitState Capture() => new(
+        Title,
+        GridSize,
+        Nodes.Values.Select(CircuitMapping.ToNodeDto).ToList(),
+        Wires.Values.Select(CircuitMapping.ToWireDto).ToList(),
+        CustomIcs.Values.Select(CircuitMapping.ToIcDto).ToList());
+
+    /// <summary>Replaces the editable content of the circuit with a captured state.</summary>
+    public void Restore(CircuitState state)
+    {
+        Title = state.Title;
+        GridSize = state.GridSize;
+        Nodes.Clear();
+        Wires.Clear();
+        CustomIcs.Clear();
+        foreach (var node in state.Nodes)
+            Nodes[node.Id] = new NodeItem
+            {
+                Id = node.Id,
+                Type = node.Type,
+                X = node.X,
+                Y = node.Y,
+                State = node.State,
+                DefinitionId = node.DefinitionId
+            };
+        foreach (var wire in state.Wires)
+            Wires[wire.Id] = new Wire
+            {
+                Id = wire.Id,
+                FromNodeId = wire.FromNodeId,
+                ToNodeId = wire.ToNodeId,
+                ToPin = wire.ToPin,
+                FromPort = string.IsNullOrEmpty(wire.FromPort) ? "out" : wire.FromPort
+            };
+        foreach (var definition in state.CustomIcs)
+            CustomIcs[definition.Id] = CircuitMapping.ToIcDefinition(definition);
+        Touch();
     }
 
     public void Snap(NodeItem node)

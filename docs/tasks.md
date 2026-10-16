@@ -10,10 +10,10 @@ code that motivates it.
       `[Fact]` scaffold from the xUnit template. Either delete it or replace it
       with a real smoke test. (`docs/testing.md` §4 notes this.)
 - [ ] **Sync README hub-method list with reality** — README lists
-      `JoinLobby…SendCursor` but omits `DeleteRoom`, `ImportCircuit`,
-      `DuplicateNodes`, `PackageIc`, `TidyLayout`, `SetButton`, `AddIcNode`,
-      `AddIcWire`, `LeaveRoom`. Link `docs/api-reference.md` as the contract of
-      record.
+       `JoinLobby…SendCursor` but omits `DeleteRoom`, `ImportCircuit`,
+       `DuplicateNodes`, `PackageIc`, `TidyLayout`, `SetButton`, `Undo`/`Redo`,
+       `AddIcNode`, `AddIcWire`, `LeaveRoom`. Link `docs/api-reference.md` as the
+       contract of record.
 - [ ] **Decide the fate of root `package.json`** — it exists only so
       `audit-ui.cjs` can `require` puppeteer. Either document that clearly (done
       in `docs/memory.md` + `rules.md`) or move the audit script under
@@ -43,8 +43,6 @@ code that motivates it.
 - [ ] **Named circuit library** — a browse/rename UI over the auto-saved circuits
       now that they persist (`CircuitPersistence`); the storage layer exists,
       the lobby surface does not.
-- [ ] **Undo/redo** — needs server-side op history or inverse ops; currently
-      impossible because ops are fire-and-broadcast.
 - [ ] **Spectator links** — read-only room role; `EnterRoom` would branch on a
       capability token carried in the URL.
 - [ ] **Scale-out spike** — SignalR backplane + shared store proof-of-concept;
@@ -82,3 +80,9 @@ code that motivates it.
 - **Truth table** — `CollabHub.ComputeTruthTable` enumerates every input-switch
   combination (≤ 8) through `Simulator.ComputeTruthTable`, rendered in a toolbar
   dialog with CSV copy/download; unit + e2e covered, browser-verified via CDP.
+- **Undo/redo** — `Core/CircuitHistory.cs` bounded (50) room-global snapshot
+  stack; `CollabHub.Undo`/`Redo` rebuild `CircuitReplaced` (reuses import path) +
+  `HistoryChanged(canUndo,canRedo)`; structural ops record under the circuit lock,
+  simulation actions don't; toolbar buttons + Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y;
+  unit + e2e covered, browser-verified via CDP. Room-global by deliberate design
+  (per-user undo is a non-goal — `docs/prd.md` §3).
