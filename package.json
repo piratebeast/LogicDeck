@@ -1,0 +1,16 @@
+{
+  "name": "test_ai_agent_task6",
+  "version": "1.0.0",
+  "description": "A multi-user dashboard for small local teams to **draw logic circuits together in real time**. Users join with just a display name (no registration, no passwords), create circuit rooms or join existing ones, place gates and wires on a shared canvas, and run a **live logic simulation** that propagates signals to every connected client instantly.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

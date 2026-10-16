@@ -1,0 +1,20 @@
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+out/
+publish/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+TestResults/
+coverage*/
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Runtime circuit persistence + local server bookkeeping
+App_Data/
+.server.pid

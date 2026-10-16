@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LogicDeck — collaborative logic circuits</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="lib/icons/bootstrap-icons.min.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg width="27" height="27" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="29" height="29" rx="8.5" fill="#10151c" stroke="#45d6a4" stroke-width="2" />
+        <path d="M7 13.5 H9 M7 19.5 H9 M20 16.5 H25"
+              stroke="#dfe7ef" stroke-width="1.8" stroke-linecap="round" />
+        <path d="M9 11 H14.5 A5.5 5.5 0 0 1 14.5 22 H9 Z"
+              fill="none" stroke="#dfe7ef" stroke-width="1.8" stroke-linejoin="round" />
+      </svg>
+      <div>
+        <div class="brand-name">LogicDeck</div>
+        <div class="brand-tag">logic circuit workbench</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <span class="dot-status off" id="connState"><i></i><span>OFFLINE</span></span>
+    <span class="vr"></span>
+    <span class="identity-chip" id="identityChip" hidden></span>
+  </header>
+
+  <main>
+    <section class="gate-card" id="gateCard">
+      <svg width="46" height="46" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="29" height="29" rx="8.5" fill="none" stroke="#45d6a4" stroke-width="2" />
+        <path d="M7 13.5 H9 M7 19.5 H9 M20 16.5 H25"
+              stroke="#dfe7ef" stroke-width="1.8" stroke-linecap="round" />
+        <path d="M9 11 H14.5 A5.5 5.5 0 0 1 14.5 22 H9 Z"
+              fill="none" stroke="#dfe7ef" stroke-width="1.8" stroke-linejoin="round" />
+      </svg>
+      <h1>Pick your call sign</h1>
+      <p class="sub">No accounts, no passwords. Your name is how teammates see you on the bench.</p>
+      <form id="joinForm">
+        <div class="field">
+          <label class="micro" for="nameInput">Display name</label>
+          <input type="text" id="nameInput" maxlength="24" autocomplete="off"
+                 spellcheck="false" placeholder="e.g. Ada" required />
+        </div>
+        <button type="submit" class="btn primary" style="width:100%; margin-top:18px;" id="joinBtn">
+          Enter the lobby&nbsp;&nbsp;<i class="bi bi-arrow-right-short" style="font-size:16px"></i>
+        </button>
+      </form>
+      <p class="footnote">Same name as a teammate? You’ll get “Ada&nbsp;2” automatically.</p>
+    </section>
+
+    <section class="dash" id="dash" hidden>
+      <div class="dash-head">
+        <span class="micro">Open circuits</span>
+        <span class="count-pill" id="roomCount">0</span>
+        <span class="spacer" style="flex:1"></span>
+        <button class="btn primary" id="newRoomBtn"><i class="bi bi-plus-lg"></i>New circuit</button>
+      </div>
+      <div class="room-grid" id="roomGrid"></div>
+      <div class="empty-dash" id="emptyDash" hidden>
+        <svg width="120" height="72" viewBox="0 0 120 72" fill="none" stroke="#61707f" stroke-width="2">
+          <rect x="8" y="18" width="30" height="36" rx="6" stroke-dasharray="5 5" />
+          <path d="M38 36 H58" stroke-dasharray="5 5" />
+          <circle cx="70" cy="36" r="12" stroke-dasharray="5 5" />
+          <path d="M82 36 H102" stroke-dasharray="5 5" />
+        </svg>
+        <div class="t1">No circuits on the bench yet</div>
+        <div class="t2">Create one, then share the link — everyone opens it live.</div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="newRoomDlg">
+    <form method="dialog" id="newRoomForm">
+      <div class="dlg-head">
+        <h2>New circuit</h2>
+        <button type="button" class="dlg-close" data-close><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="dlg-body">
+        <div class="field">
+          <label class="micro" for="dlgTitle">Title</label>
+          <input type="text" id="dlgTitle" maxlength="48" placeholder="e.g. Half-adder demo" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label class="micro">Grid size</label>
+          <div class="segmented" id="gridSeg">
+            <label><input type="radio" name="grid" value="8" /><span>8</span></label>
+            <label><input type="radio" name="grid" value="16" checked /><span>16</span></label>
+            <label><input type="radio" name="grid" value="24" /><span>24</span></label>
+            <label><input type="radio" name="grid" value="32" /><span>32</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="dlg-foot">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn primary" id="dlgCreate">Create &amp; open<i class="bi bi-arrow-right-short" style="font-size:15px"></i></button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts"></div>
+
+  <script src="lib/signalr/signalr.min.js"></script>
+  <script type="module" src="js/pages/lobby.js"></script>
+</body>
+</html>

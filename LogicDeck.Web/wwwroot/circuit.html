@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LogicDeck — circuit</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/lib/joint/joint.min.css" />
+  <link rel="stylesheet" href="/lib/icons/bootstrap-icons.min.css" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="editor-page">
+  <header class="topbar">
+    <button class="btn icon-only" id="backBtn" title="Back to lobby"><i class="bi bi-arrow-left"></i></button>
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="29" height="29" rx="8.5" fill="#10151c" stroke="#45d6a4" stroke-width="2" />
+        <path d="M7 13.5 H9 M7 19.5 H9 M20 16.5 H25"
+              stroke="#dfe7ef" stroke-width="1.8" stroke-linecap="round" />
+        <path d="M9 11 H14.5 A5.5 5.5 0 0 1 14.5 22 H9 Z"
+              fill="none" stroke="#dfe7ef" stroke-width="1.8" stroke-linejoin="round" />
+      </svg>
+    </div>
+    <span class="vr"></span>
+    <div class="title-edit" id="titleEdit">
+      <i class="bi bi-pencil-fill"></i>
+      <input id="titleInput" maxlength="48" spellcheck="false" autocomplete="off" title="Rename circuit (Enter to apply)" />
+    </div>
+    <span class="vr"></span>
+    <button class="run-toggle" id="runToggle" title="Toggle live simulation for everyone">
+      <i class="bi bi-power"></i><span id="runLabel">RUN</span>
+    </button>
+    <div class="field grid-field">
+      <label class="micro" for="gridSel">GRID</label>
+      <select id="gridSel">
+        <option value="8">8 px</option>
+        <option value="16">16 px</option>
+        <option value="24">24 px</option>
+        <option value="32">32 px</option>
+      </select>
+    </div>
+    <button class="btn" id="duplicateBtn" title="Duplicate selection (Ctrl+D)" disabled>
+      <i class="bi bi-copy"></i><span>Duplicate</span>
+    </button>
+    <button class="btn" id="packageBtn" title="Package selected gates as a reusable IC" disabled>
+      <i class="bi bi-box"></i><span>Package IC</span>
+    </button>
+    <button class="btn" id="truthBtn" title="Enumerate every input combination into a truth table">
+      <i class="bi bi-table"></i><span>Truth table</span>
+    </button>
+    <button class="btn" id="tidyBtn" title="Tidy selected parts into columns">
+      <i class="bi bi-grid-3x3-gap"></i><span>Tidy</span>
+    </button>
+    <button class="btn" id="clearBtn" title="Clear circuit">
+      <i class="bi bi-eraser"></i><span>Clear</span>
+    </button>
+    <button class="btn" id="exportBtn" title="Export circuit as JSON">
+      <i class="bi bi-download"></i><span>Export</span>
+    </button>
+    <button class="btn" id="importBtn" title="Import circuit JSON">
+      <i class="bi bi-upload"></i><span>Import</span>
+    </button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden />
+    <span class="spacer"></span>
+    <button class="btn" id="copyLinkBtn" title="Copy invite link"><i class="bi bi-link-45deg"></i><span>Invite</span></button>
+    <span class="vr"></span>
+    <div class="member-stack" id="memberStack" title=""></div>
+    <span class="vr"></span>
+    <span class="dot-status off" id="connState"><i></i><span>OFFLINE</span></span>
+  </header>
+
+  <main class="stage">
+    <aside class="palette" id="palette"></aside>
+
+    <div class="canvas-wrap" id="canvasWrap">
+      <div id="paper"></div>
+      <div class="cursor-layer" id="cursorLayer"></div>
+
+      <div class="canvas-hint" id="canvasHint">
+        <svg width="150" height="86" viewBox="0 0 120 72" fill="none" stroke="#61707f" stroke-width="2">
+          <rect x="8" y="18" width="30" height="36" rx="6" stroke-dasharray="5 5" />
+          <path d="M38 36 H58" stroke-dasharray="5 5" />
+          <circle cx="70" cy="36" r="12" stroke-dasharray="5 5" />
+          <path d="M82 36 H102" stroke-dasharray="5 5" />
+        </svg>
+        <div class="t1">Empty bench</div>
+        <div class="t2">
+          Pick a component on the left or press
+          <span class="kbd">0</span>–<span class="kbd">9</span> or <span class="kbd">B</span>, then click to place.
+          Drag from a green port to wire things up.
+        </div>
+      </div>
+
+      <div class="zoom-pill">
+        <button id="zoomOutBtn" title="Zoom out"><i class="bi bi-dash-lg"></i></button>
+        <span class="zoom-val" id="zoomVal">100%</span>
+        <button id="zoomInBtn" title="Zoom in"><i class="bi bi-plus-lg"></i></button>
+        <button id="fitBtn" title="Fit content"><i class="bi bi-arrows-fullscreen"></i></button>
+      </div>
+
+      <div class="link-off-banner" id="offBanner" hidden>
+        <i class="bi bi-wifi-off"></i><span>Connection lost — reconnecting…</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="statusbar">
+    <span class="statusbar-coords">X <b id="sbX">—</b>&nbsp;&nbsp;Y <b id="sbY">—</b></span>
+    <span>ZOOM <b id="sbZoom">100%</b></span>
+    <span>GRID <b id="sbGrid">16</b></span>
+    <span>PARTS <b id="sbParts">0</b></span>
+    <div class="right">
+      <span id="sbMembers">1 ONLINE</span>
+    </div>
+  </footer>
+
+  <dialog id="nameGateDlg">
+    <form method="dialog" id="gateForm">
+      <div class="dlg-head"><h2>Pick your call sign</h2></div>
+      <div class="dlg-body">
+        <p style="color:var(--ink-1); font-size:13px; margin-bottom:16px;">
+          You need a name before joining this circuit.
+        </p>
+        <div class="field">
+          <label class="micro" for="gateNameInput">Display name</label>
+          <input type="text" id="gateNameInput" maxlength="24" autocomplete="off" spellcheck="false" required />
+        </div>
+      </div>
+      <div class="dlg-foot">
+        <button type="submit" class="btn primary" id="gateJoinBtn">Join<i class="bi bi-arrow-right-short" style="font-size:15px"></i></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="packageDlg">
+    <form method="dialog" id="packageForm">
+      <div class="dlg-head"><h2>Package reusable IC</h2></div>
+      <div class="dlg-body">
+        <div class="field">
+          <label class="micro" for="icNameInput">IC name</label>
+          <input type="text" id="icNameInput" maxlength="24" autocomplete="off" spellcheck="false" required />
+        </div>
+        <div id="packagePins"></div>
+      </div>
+      <div class="dlg-foot">
+        <button type="button" class="btn" id="packageCancel">Cancel</button>
+        <button type="submit" class="btn primary" id="packageCreate">Create IC</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="truthDlg">
+    <div class="dlg-head">
+      <h2>Truth table</h2>
+      <button type="button" class="dlg-close" id="truthClose" title="Close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="dlg-body">
+      <p class="truth-summary micro" id="truthSummary"></p>
+      <div class="truth-wrap" id="truthWrap"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" id="truthCopy"><i class="bi bi-clipboard"></i> Copy CSV</button>
+      <button type="button" class="btn primary" id="truthDownload"><i class="bi bi-download"></i> Download</button>
+    </div>
+  </dialog>
+
+  <div id="toasts"></div>
+
+  <script src="/lib/joint/jquery.min.js"></script>
+  <script src="/lib/joint/lodash.min.js"></script>
+  <script src="/lib/joint/backbone-min.js"></script>
+  <script src="/lib/joint/joint.min.js"></script>
+  <script src="/lib/signalr/signalr.min.js"></script>
+  <script type="module" src="/js/pages/editor.js"></script>
+</body>
+</html>
